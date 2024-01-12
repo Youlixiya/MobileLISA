@@ -124,5 +124,6 @@ work_dirs/
 
 # MobileVLM
 outputs
-w
-
+weights/*
+dataset/*
+runs/*

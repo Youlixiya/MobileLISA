@@ -1,5 +1,6 @@
 from typing import List
 from PIL import Image
+import zipfile
 import cv2
 import numpy as np
 import torch
@@ -82,7 +83,9 @@ class MobileLisaMetaModel:
 
     def initialize_lisa_modules(self, config):
         # SAM
-        self.visual_model = build_efficient_sam_vits(self.vision_pretrained)
+        # with zipfile.ZipExtFile(self.vision_pretrained, 'r') as zip_ref:
+        #     zip_ref.extractall('weights')
+        self.visual_model = build_efficient_sam_vits(checkpoint=self.vision_pretrained)
         for param in self.visual_model.parameters():
             param.requires_grad = False
         if config.train_mask_decoder:

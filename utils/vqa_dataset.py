@@ -5,10 +5,12 @@ import random
 import cv2
 import torch
 import torch.nn.functional as F
+import torchvision.transforms as T
 from transformers import CLIPImageProcessor
 
-from model.llava import conversation as conversation_lib
-from model.segment_anything.utils.transforms import ResizeLongestSide
+# from model.llava import conversation as conversation_lib
+from mobilevlm import conversation as conversation_lib
+# from model.segment_anything.utils.transforms import ResizeLongestSide
 
 from .utils import DEFAULT_IMAGE_TOKEN
 
@@ -29,8 +31,8 @@ def preprocess_multimodal(source, mm_use_im_start_end):
 
 
 class VQADataset(torch.utils.data.Dataset):
-    pixel_mean = torch.Tensor([123.675, 116.28, 103.53]).view(-1, 1, 1)
-    pixel_std = torch.Tensor([58.395, 57.12, 57.375]).view(-1, 1, 1)
+    pixel_mean = torch.Tensor([0.485, 0.456, 0.406]).view(-1, 1, 1)
+    pixel_std = torch.Tensor([0.229, 0.224, 0.225]).view(-1, 1, 1)
     img_size = 1024
     ignore_label = 255
 
@@ -54,7 +56,7 @@ class VQADataset(torch.utils.data.Dataset):
         self.image_size = image_size
         self.tokenizer = tokenizer
         self.precision = precision
-        self.transform = ResizeLongestSide(image_size)
+        # self.transform = ResizeLongestSide(image_size)
         self.clip_image_processor = CLIPImageProcessor.from_pretrained(vision_tower)
 
         DATA_DIR = os.path.join(base_image_dir, "llava_dataset")
@@ -93,7 +95,7 @@ class VQADataset(torch.utils.data.Dataset):
             0
         ]  # preprocess image for clip
 
-        image = self.transform.apply_image(image)  # preprocess image for sam
+        # image = self.transform.apply_image(image)  # preprocess image for sam
         resize = image.shape[:2]
 
         conv = conversation_lib.default_conversation.copy()
@@ -117,8 +119,8 @@ class VQADataset(torch.utils.data.Dataset):
         questions = conversations
         sampled_classes = conversations
 
-        image = self.preprocess(torch.from_numpy(image).permute(2, 0, 1).contiguous())
-
+        # image = self.preprocess(torch.from_numpy(image).permute(2, 0, 1).contiguous())
+        image = self.preprocess(self.to_tensor(image))
         masks = torch.rand(0, *ori_size)
         label = torch.ones(ori_size) * self.ignore_label
 

@@ -14,9 +14,9 @@ def build_efficient_sam_vitt():
     ).eval()
 
 
-def build_efficient_sam_vits():
+def build_efficient_sam_vits(checkpoint="weights/efficient_sam_vits.pt"):
     return build_efficient_sam(
         encoder_patch_embed_dim=384,
         encoder_num_heads=6,
-        checkpoint="weights/efficient_sam_vits.pt",
+        checkpoint=checkpoint,
     ).eval()

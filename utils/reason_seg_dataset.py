@@ -7,10 +7,11 @@ import cv2
 import numpy as np
 import torch
 import torch.nn.functional as F
+import torchvision.transforms as T
 from transformers import CLIPImageProcessor
 
-from model.llava import conversation as conversation_lib
-from model.segment_anything.utils.transforms import ResizeLongestSide
+from mobilevlm import conversation as conversation_lib
+# from model.segment_anything.utils.transforms import ResizeLongestSide
 
 from .data_processing import get_mask_from_json
 from .utils import (ANSWER_LIST, DEFAULT_IMAGE_TOKEN,
@@ -19,8 +20,8 @@ from .utils import (ANSWER_LIST, DEFAULT_IMAGE_TOKEN,
 
 
 class ReasonSegDataset(torch.utils.data.Dataset):
-    pixel_mean = torch.Tensor([123.675, 116.28, 103.53]).view(-1, 1, 1)
-    pixel_std = torch.Tensor([58.395, 57.12, 57.375]).view(-1, 1, 1)
+    pixel_mean = torch.Tensor([0.485, 0.456, 0.406]).view(-1, 1, 1)
+    pixel_std = torch.Tensor([0.229, 0.224, 0.225]).view(-1, 1, 1)
     img_size = 1024
     ignore_label = 255
 
@@ -47,7 +48,8 @@ class ReasonSegDataset(torch.utils.data.Dataset):
         self.image_size = image_size
         self.tokenizer = tokenizer
         self.precision = precision
-        self.transform = ResizeLongestSide(image_size)
+        # self.transform = ResizeLongestSide(image_size)
+        self.to_tensor = T.ToTensor()
         self.clip_image_processor = CLIPImageProcessor.from_pretrained(vision_tower)
 
         self.short_question_list = SHORT_QUESTION_LIST
@@ -132,7 +134,7 @@ class ReasonSegDataset(torch.utils.data.Dataset):
             (mask == 1).astype(np.float32) for _ in range(len(sampled_inds))
         ]
 
-        image = self.transform.apply_image(image)  # preprocess image for sam
+        # image = self.transform.apply_image(image)  # preprocess image for sam
         resize = image.shape[:2]
 
         image_name = image_path.split("/")[-1]
@@ -190,7 +192,8 @@ class ReasonSegDataset(torch.utils.data.Dataset):
                 conversations.append(conv.get_prompt())
                 i += 1
 
-        image = self.preprocess(torch.from_numpy(image).permute(2, 0, 1).contiguous())
+        # image = self.preprocess(torch.from_numpy(image).permute(2, 0, 1).contiguous())
+        image = self.preprocess(self.to_tensor(image))
 
         image_name = image_path.split("/")[-1]
         if (
