@@ -6,7 +6,6 @@ import cv2
 import numpy as np
 import torch
 import torch.nn.functional as F
-import torchvision.transforms as T
 from pycocotools import mask
 from transformers import CLIPImageProcessor
 
@@ -14,7 +13,7 @@ from mobilevlm import conversation as conversation_lib
 from mobilevlm.constants import (DEFAULT_IMAGE_TOKEN, IGNORE_INDEX,
                                    IMAGE_TOKEN_INDEX)
 from mobilevlm.utils import tokenizer_image_token
-# from model.segment_anything.utils.transforms import ResizeLongestSide
+from segment_anything.utils.transforms import ResizeLongestSide
 
 from .conversation import get_default_conv_template
 from .data_processing import get_mask_from_json
@@ -162,10 +161,8 @@ def collate_fn(
 
 
 class HybridDataset(torch.utils.data.Dataset):
-    # pixel_mean = torch.Tensor([123.675, 116.28, 103.53]).view(-1, 1, 1)
-    pixel_mean = torch.Tensor([0.485, 0.456, 0.406]).view(-1, 1, 1)
-    pixel_std = torch.Tensor([0.229, 0.224, 0.225]).view(-1, 1, 1)
-    # pixel_std = torch.Tensor([58.395, 57.12, 57.375]).view(-1, 1, 1)
+    pixel_mean = torch.Tensor([123.675, 116.28, 103.53]).view(-1, 1, 1)
+    pixel_std = torch.Tensor([58.395, 57.12, 57.375]).view(-1, 1, 1)
     img_size = 1024
     ignore_label = 255
 
@@ -332,8 +329,7 @@ class ValDataset(torch.utils.data.Dataset):
         self.ds = ds
         self.image_size = image_size
         self.tokenizer = tokenizer
-        # self.transform = ResizeLongestSide(image_size)
-        self.to_tensor = T.ToTensor()
+        self.transform = ResizeLongestSide(image_size)
         self.clip_image_processor = CLIPImageProcessor.from_pretrained(vision_tower)
 
     def __len__(self):
@@ -345,16 +341,14 @@ class ValDataset(torch.utils.data.Dataset):
     def preprocess(self, x: torch.Tensor) -> torch.Tensor:
         """Normalize pixel values and pad to a square input."""
         # Normalize colors
-        if (
-            x.shape[2] != self.img_size
-            or x.shape[3] != self.img_size
-        ):
-            x = F.interpolate(
-                    x,
-                    (self.img_size, self.img_size),
-                    mode="bilinear",
-                )
-        return (x - self.pixel_mean) / self.pixel_std
+        x = (x - self.pixel_mean) / self.pixel_std
+
+        # Pad
+        h, w = x.shape[-2:]
+        padh = self.img_size - h
+        padw = self.img_size - w
+        x = F.pad(x, (0, padw, 0, padh))
+        return x
 
     def __getitem__(self, idx):
         if self.data_type == "refer_seg":
@@ -422,10 +416,9 @@ class ValDataset(torch.utils.data.Dataset):
         ][0]
 
         # preprocess image for sam
-        # image = self.transform.apply_image(image)
+        image = self.transform.apply_image(image)
         resize = image.shape[:2]
-        # image = self.preprocess(torch.from_numpy(image).permute(2, 0, 1).contiguous())
-        image = self.preprocess(self.to_tensor(image).unsqueeze(0)).squeeze(0)
+        image = self.preprocess(torch.from_numpy(image).permute(2, 0, 1).contiguous())
 
         if self.data_type == "refer_seg":
             masks = []

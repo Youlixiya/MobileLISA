@@ -15,7 +15,7 @@ from mobilevlm.model.mobilellama import MobileLlamaForCausalLM, MobileLlamaModel
 
 # from mobile.llava_llama import (LlavaLlamaForCausalLM,
 #                                                      LlavaLlamaModel)
-from efficient_sam import build_efficient_sam_vits
+from segment_anything import build_sam_vit_h
 
 
 def dice_loss(
@@ -85,7 +85,7 @@ class MobileLisaMetaModel:
         # SAM
         # with zipfile.ZipExtFile(self.vision_pretrained, 'r') as zip_ref:
         #     zip_ref.extractall('weights')
-        self.visual_model = build_efficient_sam_vits(checkpoint=self.vision_pretrained)
+        self.visual_model = build_sam_vit_h(self.vision_pretrained)
         for param in self.visual_model.parameters():
             param.requires_grad = False
         if config.train_mask_decoder:
@@ -136,7 +136,7 @@ class MobileLISAForCausalLM(MobileLlamaForCausalLM):
         if not hasattr(config, "train_mask_decoder"):
             config.mm_use_im_start_end = kwargs.pop("use_mm_start_end", True)
             config.mm_vision_tower = kwargs.get(
-                "vision_tower", "openai/clip-vit-large-patch14"
+                "vision_tower", "openai/clip-vit-large-patch14-336"
             )
             self.ce_loss_weight = kwargs.pop("ce_loss_weight", None)
             self.dice_loss_weight = kwargs.pop("dice_loss_weight", None)
@@ -256,7 +256,6 @@ class MobileLISAForCausalLM(MobileLlamaForCausalLM):
                 )
                 images_clip_list.append(images_clip_i)
             images_clip = torch.cat(images_clip_list, dim=0)
-            # print(f'images_clip:{images_clip.shape}')
 
             output = super().forward(
                 images=images_clip,
@@ -266,7 +265,6 @@ class MobileLISAForCausalLM(MobileLlamaForCausalLM):
                 output_hidden_states=True,
             )
             output_hidden_states = output.hidden_states
-            # print(f'output_hidden_states:{output_hidden_states[-1].shape}')
 
         hidden_states = []
 
@@ -274,7 +272,6 @@ class MobileLISAForCausalLM(MobileLlamaForCausalLM):
         hidden_states.append(self.model.text_hidden_fcs[0](output_hidden_states[-1]))
 
         last_hidden_state = torch.stack(hidden_states, dim=-1).sum(dim=-1)
-        # print(f'last_hidden_state:{last_hidden_state.shape}')
         pred_embeddings = last_hidden_state[seg_token_mask]
         seg_token_counts = seg_token_mask.int().sum(-1)  # [bs, ]
 
@@ -284,52 +281,38 @@ class MobileLISAForCausalLM(MobileLlamaForCausalLM):
         )
 
         seg_token_offset = seg_token_offset[offset]
-        # print(f'pred_embeddings:{pred_embeddings.shape}')
+
         pred_embeddings_ = []
         for i in range(len(seg_token_offset) - 1):
             start_i, end_i = seg_token_offset[i], seg_token_offset[i + 1]
             pred_embeddings_.append(pred_embeddings[start_i:end_i])
-            # print(f'pred_embeddings:{pred_embeddings_[i].shape}')
         pred_embeddings = pred_embeddings_
-        
-        # print(f'image_embeddings:{image_embeddings.shape}')
+
         multimask_output = False
         pred_masks = []
         for i in range(len(pred_embeddings)):
             (
-                # sparse_embeddings,
-            #     dense_embeddings,
-            # ) = self.model.visual_model.prompt_encoder(
-            #     points=None,
-            #     boxes=None,
-            #     masks=None,
-            #     text_embeds=pred_embeddings[i].unsqueeze(1),
+                sparse_embeddings,
+                dense_embeddings,
+            ) = self.model.visual_model.prompt_encoder(
+                points=None,
+                boxes=None,
+                masks=None,
+                text_embeds=pred_embeddings[i].unsqueeze(1),
             )
-            
-            sparse_embeddings = pred_embeddings[i].unsqueeze(0).unsqueeze(0)
-            # print(sparse_embeddings.shape)
             sparse_embeddings = sparse_embeddings.to(pred_embeddings[i].dtype)
             low_res_masks, iou_predictions = self.model.visual_model.mask_decoder(
                 image_embeddings=image_embeddings[i].unsqueeze(0),
                 image_pe=self.model.visual_model.prompt_encoder.get_dense_pe(),
                 sparse_prompt_embeddings=sparse_embeddings,
-                # dense_prompt_embeddings=dense_embeddings,
+                dense_prompt_embeddings=dense_embeddings,
                 multimask_output=multimask_output,
             )
-            
-            pred_mask = F.interpolate(
-                low_res_masks, label_list[i].shape, mode="bicubic"
+            pred_mask = self.model.visual_model.postprocess_masks(
+                low_res_masks,
+                input_size=resize_list[i],
+                original_size=label_list[i].shape,
             )
-            # output_masks = torch.reshape(
-            #     output_masks,
-            #     (batch_size, max_num_queries, num_predictions, output_h, output_w),
-            # )
-            
-            # pred_mask = self.model.visual_model.postprocess_masks(
-            #     low_res_masks,
-            #     input_size=resize_list[i],
-            #     original_size=label_list[i].shape,
-            # )
             pred_masks.append(pred_mask[:, 0])
 
         model_output = output
@@ -349,7 +332,7 @@ class MobileLISAForCausalLM(MobileLlamaForCausalLM):
         mask_dice_loss = 0
         num_masks = 0
         for batch_idx in range(len(pred_masks)):
-            gt_mask = gt_masks[batch_idx][[0]]
+            gt_mask = gt_masks[batch_idx]
             pred_mask = pred_masks[batch_idx]
 
             assert (
@@ -438,31 +421,28 @@ class MobileLISAForCausalLM(MobileLlamaForCausalLM):
             multimask_output = False
             pred_masks = []
             for i in range(len(pred_embeddings)):
-                # (
-                #     sparse_embeddings,
-                #     dense_embeddings,
-                # ) = self.model.visual_model.prompt_encoder(
-                #     points=None,
-                #     boxes=None,
-                #     masks=None,
-                #     text_embeds=pred_embeddings[i].unsqueeze(1),
-                # )
-                sparse_embeddings = pred_embeddings[i].unsqueeze(0).unsqueeze(0)
+                (
+                    sparse_embeddings,
+                    dense_embeddings,
+                ) = self.model.visual_model.prompt_encoder(
+                    points=None,
+                    boxes=None,
+                    masks=None,
+                    text_embeds=pred_embeddings[i].unsqueeze(1),
+                )
+
                 sparse_embeddings = sparse_embeddings.to(pred_embeddings[i].dtype)
                 low_res_masks, iou_predictions = self.model.visual_model.mask_decoder(
                     image_embeddings=image_embeddings[i].unsqueeze(0),
                     image_pe=self.model.visual_model.prompt_encoder.get_dense_pe(),
                     sparse_prompt_embeddings=sparse_embeddings,
-                    # dense_prompt_embeddings=dense_embeddings,
+                    dense_prompt_embeddings=dense_embeddings,
                     multimask_output=multimask_output,
                 )
-                # pred_mask = self.model.visual_model.postprocess_masks(
-                #     low_res_masks,
-                #     input_size=resize_list[i],
-                #     original_size=original_size_list[i],
-                # )
-                pred_mask = F.interpolate(
-                low_res_masks, original_size_list[i], mode="bicubic"
+                pred_mask = self.model.visual_model.postprocess_masks(
+                    low_res_masks,
+                    input_size=resize_list[i],
+                    original_size=original_size_list[i],
                 )
                 pred_masks.append(pred_mask[:, 0])
 
