@@ -220,13 +220,18 @@ class EfficientSam(nn.Module):
         if (
             x.shape[2] != self.image_encoder.img_size
             or x.shape[3] != self.image_encoder.img_size
-        ):
+        ):  
+            # if x.dtype == torch.float16:
+                
+            #     x = x.float()
+            dtype = x.dtype
+            x = x.float()
             x = F.interpolate(
                 x,
                 (self.image_encoder.img_size, self.image_encoder.img_size),
                 mode="bilinear",
             )
-        return (x - self.pixel_mean) / self.pixel_std
+        return ((x - self.pixel_mean) / self.pixel_std).to(dtype=dtype)
 
 
 def build_efficient_sam(encoder_patch_embed_dim, encoder_num_heads, checkpoint=None):

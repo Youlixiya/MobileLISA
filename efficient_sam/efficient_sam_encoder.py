@@ -164,12 +164,15 @@ def get_abs_pos(
     assert size * size == xy_num
 
     if size != h or size != w:
+        dtype = abs_pos.dtype
+        abs_pos = abs_pos.float()
         new_abs_pos = F.interpolate(
             abs_pos.reshape(1, size, size, -1).permute(0, 3, 1, 2),
             size=(h, w),
             mode="bicubic",
             align_corners=False,
         )
+        new_abs_pos = new_abs_pos.to(dtype=dtype)
         return new_abs_pos.permute(0, 2, 3, 1)
     else:
         return abs_pos.reshape(1, h, w, -1)

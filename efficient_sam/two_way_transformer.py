@@ -164,8 +164,16 @@ class TwoWayAttentionBlock(nn.Module):
         if not self.skip_first_layer_pe:
             queries = queries + query_pe
         attn_out = self.self_attn(q=queries, k=queries, v=queries)
+        dtype=attn_out.dtype
+        print(dtype)
+        queries = queries.to(dtype=dtype)
+        keys = keys.to(dtype=dtype)
+        query_pe = query_pe.to(dtype=dtype)
+        key_pe = key_pe.to(dtype=dtype)
         queries = queries + attn_out
+        
         queries = self.norm1(queries)
+        # queries = self.norm1(queries.float()).to(dtype=dtype)
 
         # Cross attention block, tokens attending to image embedding
         q = queries + query_pe
@@ -173,11 +181,13 @@ class TwoWayAttentionBlock(nn.Module):
         attn_out = self.cross_attn_token_to_image(q=q, k=k, v=keys)
         queries = queries + attn_out
         queries = self.norm2(queries)
+        # queries = self.norm2(queries.float()).to(dtype=dtype)
 
         # MLP block
         mlp_out = self.mlp(queries)
         queries = queries + mlp_out
         queries = self.norm3(queries)
+        # queries = self.norm3(queries.float()).to(dtype=dtype)
 
         # Cross attention block, image embedding attending to tokens
         q = queries + query_pe
@@ -185,6 +195,7 @@ class TwoWayAttentionBlock(nn.Module):
         attn_out = self.cross_attn_image_to_token(q=k, k=q, v=queries)
         keys = keys + attn_out
         keys = self.norm4(keys)
+        # keys = self.norm4(keys.float()).to(dtype=dtype)
 
         return queries, keys
 
@@ -245,6 +256,10 @@ class AttentionForTwoWayAttentionBlock(nn.Module):
 
     def forward(self, q: Tensor, k: Tensor, v: Tensor) -> Tensor:
         # Input projections
+        dtype = self.q_proj.weight.data.dtype
+        q = q.to(dtype=dtype)
+        k = k.to(dtype=dtype)
+        v = v.to(dtype=dtype)
         q = self.q_proj(q)
         k = self.k_proj(k)
         v = self.v_proj(v)
