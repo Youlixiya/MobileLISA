@@ -32,7 +32,7 @@ def parse_args(args):
     parser.add_argument("--vis_save_path", default="./vis_output", type=str)
     parser.add_argument(
         "--precision",
-        default="bf16",
+        default="fp32",
         type=str,
         choices=["fp32", "bf16", "fp16"],
         help="precision for inference",
@@ -41,7 +41,7 @@ def parse_args(args):
     parser.add_argument("--model_max_length", default=512, type=int)
     parser.add_argument("--lora_r", default=8, type=int)
     parser.add_argument(
-        "--vision-tower", default="openai/clip-vit-large-patch14", type=str
+        "--vision-tower", default="openai/clip-vit-large-patch14-336", type=str
     )
     parser.add_argument("--load_in_8bit", action="store_true", default=False)
     parser.add_argument("--load_in_4bit", action="store_true", default=False)
@@ -165,6 +165,7 @@ def main(args):
     vision_tower.to(dtype=torch_dtype, device=args.local_rank)
     if not args.eval_only:
         model.get_model().initialize_lisa_modules(model.get_model().config)
+        model.get_model().visual_model.to(dtype=torch_dtype, device=args.local_rank)
 
     for p in vision_tower.parameters():
         p.requires_grad = False

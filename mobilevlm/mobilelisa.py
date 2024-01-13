@@ -187,11 +187,26 @@ class MobileLISAForCausalLM(MobileLlamaForCausalLM):
         inference: bool = False,
         **kwargs,
     ):
+        # print(f'len_masks_list:{len(masks_list)}')
+        # for i in range(len(masks_list)):
+                       
+        #     print(f'masks_list{i}_shape:{masks_list[i].shape}')
+        #     # print(f'masks_list{i}:{masks_list[i]}')
+        #     print(masks_list[i][0] == masks_list[i][1])
+        #     print(torch.unique(masks_list[i].reshape(-1)))
+        # print(f'images_clip:{images_clip.shape}')
+        # print(f'input_ids:{input_ids.shape}')
+        # print(f'labels:{labels.shape}')
+        # print(f'offset:{offset.shape}')
+        # print(f'offset:{offset}')
         image_embeddings = self.get_visual_embs(images)
+        # print(f'image_embeddings:{image_embeddings.shape}')
         batch_size = image_embeddings.shape[0]
         assert batch_size == len(offset) - 1
 
         seg_token_mask = input_ids[:, 1:] == self.seg_token_idx
+        # print(f'seg_token_mask:{seg_token_mask.shape}')
+        # print(f'seg_token_mask:{seg_token_mask}')
         seg_token_mask = torch.cat(
             [
                 seg_token_mask,
@@ -201,7 +216,7 @@ class MobileLISAForCausalLM(MobileLlamaForCausalLM):
         )
         # hack for IMAGE_TOKEN_INDEX (we suppose that there is only one image, and it is in the front)
         seg_token_mask = torch.cat(
-            [torch.zeros((seg_token_mask.shape[0], 255)).bool().cuda(), seg_token_mask],
+            [torch.zeros((seg_token_mask.shape[0], 143)).bool().cuda(), seg_token_mask],
             dim=1,
         )
 
@@ -241,6 +256,7 @@ class MobileLISAForCausalLM(MobileLlamaForCausalLM):
                 )
                 images_clip_list.append(images_clip_i)
             images_clip = torch.cat(images_clip_list, dim=0)
+            # print(f'images_clip:{images_clip.shape}')
 
             output = super().forward(
                 images=images_clip,
@@ -250,6 +266,7 @@ class MobileLISAForCausalLM(MobileLlamaForCausalLM):
                 output_hidden_states=True,
             )
             output_hidden_states = output.hidden_states
+            # print(f'output_hidden_states:{output_hidden_states[-1].shape}')
 
         hidden_states = []
 
@@ -257,6 +274,7 @@ class MobileLISAForCausalLM(MobileLlamaForCausalLM):
         hidden_states.append(self.model.text_hidden_fcs[0](output_hidden_states[-1]))
 
         last_hidden_state = torch.stack(hidden_states, dim=-1).sum(dim=-1)
+        # print(f'last_hidden_state:{last_hidden_state.shape}')
         pred_embeddings = last_hidden_state[seg_token_mask]
         seg_token_counts = seg_token_mask.int().sum(-1)  # [bs, ]
 
@@ -266,31 +284,36 @@ class MobileLISAForCausalLM(MobileLlamaForCausalLM):
         )
 
         seg_token_offset = seg_token_offset[offset]
-
+        # print(f'pred_embeddings:{pred_embeddings.shape}')
         pred_embeddings_ = []
         for i in range(len(seg_token_offset) - 1):
             start_i, end_i = seg_token_offset[i], seg_token_offset[i + 1]
             pred_embeddings_.append(pred_embeddings[start_i:end_i])
+            # print(f'pred_embeddings:{pred_embeddings_[i].shape}')
         pred_embeddings = pred_embeddings_
-
+        
+        # print(f'image_embeddings:{image_embeddings.shape}')
         multimask_output = False
         pred_masks = []
         for i in range(len(pred_embeddings)):
             (
-                sparse_embeddings,
-                dense_embeddings,
-            ) = self.model.visual_model.prompt_encoder(
-                points=None,
-                boxes=None,
-                masks=None,
-                text_embeds=pred_embeddings[i].unsqueeze(1),
+                # sparse_embeddings,
+            #     dense_embeddings,
+            # ) = self.model.visual_model.prompt_encoder(
+            #     points=None,
+            #     boxes=None,
+            #     masks=None,
+            #     text_embeds=pred_embeddings[i].unsqueeze(1),
             )
+            
+            sparse_embeddings = pred_embeddings[i].unsqueeze(0).unsqueeze(0)
+            # print(sparse_embeddings.shape)
             sparse_embeddings = sparse_embeddings.to(pred_embeddings[i].dtype)
             low_res_masks, iou_predictions = self.model.visual_model.mask_decoder(
                 image_embeddings=image_embeddings[i].unsqueeze(0),
                 image_pe=self.model.visual_model.prompt_encoder.get_dense_pe(),
                 sparse_prompt_embeddings=sparse_embeddings,
-                dense_prompt_embeddings=dense_embeddings,
+                # dense_prompt_embeddings=dense_embeddings,
                 multimask_output=multimask_output,
             )
             
@@ -326,7 +349,7 @@ class MobileLISAForCausalLM(MobileLlamaForCausalLM):
         mask_dice_loss = 0
         num_masks = 0
         for batch_idx in range(len(pred_masks)):
-            gt_mask = gt_masks[batch_idx]
+            gt_mask = gt_masks[batch_idx][[0]]
             pred_mask = pred_masks[batch_idx]
 
             assert (
@@ -384,7 +407,7 @@ class MobileLISAForCausalLM(MobileLlamaForCausalLM):
             # hack for IMAGE_TOKEN_INDEX (we suppose that there is only one image, and it is in the front)
             seg_token_mask = torch.cat(
                 [
-                    torch.zeros((seg_token_mask.shape[0], 255)).bool().cuda(),
+                    torch.zeros((seg_token_mask.shape[0], 143)).bool().cuda(),
                     seg_token_mask,
                 ],
                 dim=1,
@@ -415,22 +438,22 @@ class MobileLISAForCausalLM(MobileLlamaForCausalLM):
             multimask_output = False
             pred_masks = []
             for i in range(len(pred_embeddings)):
-                (
-                    sparse_embeddings,
-                    dense_embeddings,
-                ) = self.model.visual_model.prompt_encoder(
-                    points=None,
-                    boxes=None,
-                    masks=None,
-                    text_embeds=pred_embeddings[i].unsqueeze(1),
-                )
-
+                # (
+                #     sparse_embeddings,
+                #     dense_embeddings,
+                # ) = self.model.visual_model.prompt_encoder(
+                #     points=None,
+                #     boxes=None,
+                #     masks=None,
+                #     text_embeds=pred_embeddings[i].unsqueeze(1),
+                # )
+                sparse_embeddings = pred_embeddings[i].unsqueeze(0).unsqueeze(0)
                 sparse_embeddings = sparse_embeddings.to(pred_embeddings[i].dtype)
                 low_res_masks, iou_predictions = self.model.visual_model.mask_decoder(
                     image_embeddings=image_embeddings[i].unsqueeze(0),
                     image_pe=self.model.visual_model.prompt_encoder.get_dense_pe(),
                     sparse_prompt_embeddings=sparse_embeddings,
-                    dense_prompt_embeddings=dense_embeddings,
+                    # dense_prompt_embeddings=dense_embeddings,
                     multimask_output=multimask_output,
                 )
                 # pred_mask = self.model.visual_model.postprocess_masks(

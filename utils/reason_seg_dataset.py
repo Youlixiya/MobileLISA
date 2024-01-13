@@ -99,14 +99,16 @@ class ReasonSegDataset(torch.utils.data.Dataset):
     def preprocess(self, x: torch.Tensor) -> torch.Tensor:
         """Normalize pixel values and pad to a square input."""
         # Normalize colors
-        x = (x - self.pixel_mean) / self.pixel_std
-
-        # Pad
-        h, w = x.shape[-2:]
-        padh = self.img_size - h
-        padw = self.img_size - w
-        x = F.pad(x, (0, padw, 0, padh))
-        return x
+        if (
+            x.shape[2] != self.img_size
+            or x.shape[3] != self.img_size
+        ):
+            x = F.interpolate(
+                    x,
+                    (self.img_size, self.img_size),
+                    mode="bilinear",
+                )
+        return (x - self.pixel_mean) / self.pixel_std
 
     def __getitem__(self, idx):
         images, jsons = self.reason_seg_data
@@ -193,7 +195,7 @@ class ReasonSegDataset(torch.utils.data.Dataset):
                 i += 1
 
         # image = self.preprocess(torch.from_numpy(image).permute(2, 0, 1).contiguous())
-        image = self.preprocess(self.to_tensor(image))
+        image = self.preprocess(self.to_tensor(image).unsqueeze(0)).squeeze(0)
 
         image_name = image_path.split("/")[-1]
         if (

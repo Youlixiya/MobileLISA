@@ -108,7 +108,7 @@ class PositionEmbeddingRandom(nn.Module):
         """Positionally encode points that are normalized to [0,1]."""
         # assuming coords are in [0, 1]^2 square and have d_1 x ... x d_n x 2 shape
         coords = 2 * coords - 1
-        coords = coords @ self.positional_encoding_gaussian_matrix
+        coords = coords @ self.positional_encoding_gaussian_matrix.to(coords.dtype)
         coords = 2 * np.pi * coords
         # outputs d_1 x ... x d_n x C shape
         return torch.cat([torch.sin(coords), torch.cos(coords)], dim=-1)
@@ -224,7 +224,7 @@ class MaskDecoder(nn.Module):
         image_embeddings: torch.Tensor,
         image_pe: torch.Tensor,
         sparse_prompt_embeddings: torch.Tensor,
-        dense_prompt_embeddings: torch.Tensor,
+        # dense_prompt_embeddings: torch.Tensor,
         multimask_output: bool,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -272,7 +272,7 @@ class MaskDecoder(nn.Module):
             image_embeddings=image_embeddings_tiled,
             image_pe=image_pe,
             sparse_prompt_embeddings=sparse_prompt_embeddings,
-            dense_prompt_embeddings=dense_prompt_embeddings
+            # dense_prompt_embeddings=dense_prompt_embeddings
         )
         if multimask_output and self.num_multimask_outputs > 1:
             return masks[:, 1:, :], iou_pred[:, 1:]
@@ -284,7 +284,7 @@ class MaskDecoder(nn.Module):
         image_embeddings: torch.Tensor,
         image_pe: torch.Tensor,
         sparse_prompt_embeddings: torch.Tensor,
-        dense_prompt_embeddings: torch.Tensor,
+        # dense_prompt_embeddings: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Predicts masks. See 'forward' for more details."""
         # Concatenate output tokens
@@ -296,11 +296,11 @@ class MaskDecoder(nn.Module):
         )
         tokens = torch.cat((output_tokens, sparse_prompt_embeddings), dim=1)
         # Expand per-image data in batch direction to be per-mask
-        src = torch.repeat_interleave(image_embeddings, tokens.shape[0], dim=0)
-        src = src + dense_prompt_embeddings
+        # src = torch.repeat_interleave(image_embeddings, tokens.shape[0], dim=0)
+        # src = src + dense_prompt_embeddings
         pos_src = torch.repeat_interleave(image_pe, tokens.shape[0], dim=0)
         b, c, h, w = image_embeddings.shape
-        hs, src = self.transformer(src, pos_src, tokens)
+        hs, src = self.transformer(image_embeddings, pos_src, tokens)
         iou_token_out = hs[:, 0, :]
         mask_tokens_out = hs[:, 1 : (1 + self.num_mask_tokens), :]
 

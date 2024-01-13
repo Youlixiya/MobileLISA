@@ -345,14 +345,16 @@ class ValDataset(torch.utils.data.Dataset):
     def preprocess(self, x: torch.Tensor) -> torch.Tensor:
         """Normalize pixel values and pad to a square input."""
         # Normalize colors
-        x = (x - self.pixel_mean) / self.pixel_std
-
-        # Pad
-        h, w = x.shape[-2:]
-        padh = self.img_size - h
-        padw = self.img_size - w
-        x = F.pad(x, (0, padw, 0, padh))
-        return x
+        if (
+            x.shape[2] != self.img_size
+            or x.shape[3] != self.img_size
+        ):
+            x = F.interpolate(
+                    x,
+                    (self.img_size, self.img_size),
+                    mode="bilinear",
+                )
+        return (x - self.pixel_mean) / self.pixel_std
 
     def __getitem__(self, idx):
         if self.data_type == "refer_seg":
@@ -423,7 +425,7 @@ class ValDataset(torch.utils.data.Dataset):
         # image = self.transform.apply_image(image)
         resize = image.shape[:2]
         # image = self.preprocess(torch.from_numpy(image).permute(2, 0, 1).contiguous())
-        image = self.preprocess(self.to_tensor(image))
+        image = self.preprocess(self.to_tensor(image).unsqueeze(0)).squeeze(0)
 
         if self.data_type == "refer_seg":
             masks = []
