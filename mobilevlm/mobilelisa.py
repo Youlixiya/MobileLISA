@@ -236,6 +236,7 @@ class MobileLISAForCausalLM(MobileLlamaForCausalLM):
                     output_hidden_states=True,
                 )
                 output_hidden_states.append(output_i.hidden_states)
+                # output_hidden_states = output_i.hidden_states
                 torch.cuda.empty_cache()
 
             output_hidden_states_list = []
@@ -243,6 +244,7 @@ class MobileLISAForCausalLM(MobileLlamaForCausalLM):
             output_hidden_states_list.append(output_hidden_states_level)
             output_hidden_states = output_hidden_states_list
             output = None
+            # print(f'output_hidden_states:{output_hidden_states.shape}')
 
         else:
             images_clip_list = []

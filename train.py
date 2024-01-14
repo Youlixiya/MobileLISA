@@ -165,7 +165,8 @@ def main(args):
     vision_tower.to(dtype=torch_dtype, device=args.local_rank)
     if not args.eval_only:
         model.get_model().initialize_lisa_modules(model.get_model().config)
-        model.get_model().visual_model.to(dtype=torch_dtype, device=args.local_rank)
+        # model.get_model().visual_model.to(dtype=torch_dtype, device=args.local_rank)
+        
 
     for p in vision_tower.parameters():
         p.requires_grad = False
